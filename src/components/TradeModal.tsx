@@ -3,32 +3,35 @@ import { ArrowDownRight, ArrowUpRight, X } from 'lucide-react'
 import { symbols } from '../data'
 import type { Side, Trade } from '../types'
 
-type Props = { currentPrice: number; initialSymbol: string; onClose: () => void; onCreate: (trade: Trade) => void }
+type Props = { currentPrice: number; initialSymbol: string; trade?: Trade | null; onClose: () => void; onCreate: (trade: Trade) => void }
 
-export function TradeModal({ currentPrice, initialSymbol, onClose, onCreate }: Props) {
-  const [symbol, setSymbol] = useState(initialSymbol)
-  const [side, setSide] = useState<Side>('long')
-  const [entry, setEntry] = useState(String(currentPrice))
-  const [amount, setAmount] = useState('0.1')
-  const [tp, setTp] = useState('')
-  const [sl, setSl] = useState('')
-  const [date, setDate] = useState(new Date().toISOString().slice(0,16))
-  const [note, setNote] = useState('')
-  useEffect(() => setEntry(String(currentPrice)), [currentPrice])
+export function TradeModal({ currentPrice, initialSymbol, trade, onClose, onCreate }: Props) {
+  const [symbol, setSymbol] = useState(trade?.symbol ?? initialSymbol)
+  const [side, setSide] = useState<Side>(trade?.side ?? 'long')
+  const [entry, setEntry] = useState(String(trade?.entryPrice ?? currentPrice))
+  const [amount, setAmount] = useState(String(trade?.amount ?? '0.1'))
+  const entryNum = Number(entry) || 0
+  const priceToPercent = (value?: number) => value && entryNum ? Math.abs((value-entryNum)/entryNum*100).toFixed(2) : ''
+  const [tpPercent, setTpPercent] = useState(priceToPercent(trade?.takeProfit))
+  const [slPercent, setSlPercent] = useState(priceToPercent(trade?.stopLoss))
+  const [date, setDate] = useState(trade ? new Date(trade.openedAt).toISOString().slice(0,16) : new Date().toISOString().slice(0,16))
+  const [note, setNote] = useState(trade?.note ?? '')
+  useEffect(() => { if (!trade) setEntry(String(currentPrice)) }, [currentPrice, trade])
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault()
     onCreate({
-      id: `PF-${String(Date.now()).slice(-4)}`, symbol, side,
+      id: trade?.id ?? `PF-${String(Date.now()).slice(-4)}`, symbol, side,
       entryPrice: Number(entry), amount: Number(amount),
-      takeProfit: tp ? Number(tp) : undefined, stopLoss: sl ? Number(sl) : undefined,
-      openedAt: new Date(date).toISOString(), status: 'open', note,
+      takeProfit: tpPercent ? entryNum * (1 + (side === 'long' ? 1 : -1) * Number(tpPercent)/100) : undefined,
+      stopLoss: slPercent ? entryNum * (1 + (side === 'long' ? -1 : 1) * Number(slPercent)/100) : undefined,
+      openedAt: new Date(date).toISOString(), status: trade?.status ?? 'open', note,
     })
   }
 
   return <div className="modal-backdrop" onMouseDown={e => e.target === e.currentTarget && onClose()}>
     <form className="modal" onSubmit={submit}>
-      <header><div><span className="eyebrow">Новая позиция</span><h2>Записать сделку</h2></div><button type="button" className="icon-btn" onClick={onClose}><X size={18}/></button></header>
+      <header><div><span className="eyebrow">{trade ? 'Редактирование' : 'Новая позиция'}</span><h2>{trade ? 'Изменить сделку' : 'Записать сделку'}</h2></div><button type="button" className="icon-btn" onClick={onClose}><X size={18}/></button></header>
       <div className="side-switch">
         <button type="button" className={side === 'long' ? 'active long' : ''} onClick={() => setSide('long')}><ArrowUpRight size={18}/> Long</button>
         <button type="button" className={side === 'short' ? 'active short' : ''} onClick={() => setSide('short')}><ArrowDownRight size={18}/> Short</button>
@@ -38,11 +41,11 @@ export function TradeModal({ currentPrice, initialSymbol, onClose, onCreate }: P
         <label>Дата и время<input type="datetime-local" required value={date} onChange={e => setDate(e.target.value)}/></label>
         <label>Цена входа<input type="number" min="0" step="any" required value={entry} onChange={e => setEntry(e.target.value)}/></label>
         <label>Количество<input type="number" min="0" step="any" required value={amount} onChange={e => setAmount(e.target.value)}/></label>
-        <label>Take Profit<input type="number" min="0" step="any" value={tp} placeholder="Не задан" onChange={e => setTp(e.target.value)}/></label>
-        <label>Stop Loss<input type="number" min="0" step="any" value={sl} placeholder="Не задан" onChange={e => setSl(e.target.value)}/></label>
+        <label>Take Profit, %<div className="percent-input"><input type="number" min="0" step="0.1" value={tpPercent} placeholder="Например, 5" onChange={e => setTpPercent(e.target.value)}/><span>%</span></div><small>{tpPercent ? `Цена: ${(entryNum * (1 + (side==='long'?1:-1)*Number(tpPercent)/100)).toFixed(2)}` : 'Процент от цены входа'}</small></label>
+        <label>Stop Loss, %<div className="percent-input"><input type="number" min="0" step="0.1" value={slPercent} placeholder="Например, 2" onChange={e => setSlPercent(e.target.value)}/><span>%</span></div><small>{slPercent ? `Цена: ${(entryNum * (1 + (side==='long'?-1:1)*Number(slPercent)/100)).toFixed(2)}` : 'Процент от цены входа'}</small></label>
       </div>
       <label>Комментарий<textarea value={note} placeholder="Почему вы открываете позицию?" onChange={e => setNote(e.target.value)}/></label>
-      <div className="modal-actions"><button type="button" className="btn ghost" onClick={onClose}>Отмена</button><button className="btn primary">Создать позицию</button></div>
+      <div className="modal-actions"><button type="button" className="btn ghost" onClick={onClose}>Отмена</button><button className="btn primary">{trade ? 'Сохранить изменения' : 'Создать позицию'}</button></div>
     </form>
   </div>
 }

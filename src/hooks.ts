@@ -23,6 +23,8 @@ export function useMarketPrice(symbol: string) {
 
   useEffect(() => {
     let active = true
+    let socket: WebSocket | null = null
+    let retry: number | undefined
     const load = async () => {
       try {
         const res = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`)
@@ -31,9 +33,19 @@ export function useMarketPrice(symbol: string) {
         if (active) { setPrice(Number(data.price)); setLive(true) }
       } catch { if (active) setLive(false) }
     }
-    load()
-    const timer = window.setInterval(load, 15000)
-    return () => { active = false; window.clearInterval(timer) }
+    const connect = () => {
+      socket = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@trade`)
+      socket.onopen = () => active && setLive(true)
+      socket.onmessage = event => {
+        const tick = JSON.parse(event.data)
+        if (active && tick.p) setPrice(Number(tick.p))
+      }
+      socket.onerror = () => socket?.close()
+      socket.onclose = () => { if (active) { setLive(false); retry = window.setTimeout(connect, 2500) } }
+    }
+    load(); connect()
+    const timer = window.setInterval(load, 10000)
+    return () => { active = false; window.clearInterval(timer); window.clearTimeout(retry); socket?.close() }
   }, [symbol])
   return { price, live }
 }
