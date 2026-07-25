@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
-import { ArrowDownRight, ArrowUpRight, X } from 'lucide-react'
+import { ShoppingCart, X } from 'lucide-react'
 import { symbols } from '../data'
-import type { Side, Trade } from '../types'
+import type { Trade } from '../types'
 
 type Props = { currentPrice: number; initialSymbol: string; trade?: Trade | null; onClose: () => void; onCreate: (trade: Trade) => void }
 
 export function TradeModal({ currentPrice, initialSymbol, trade, onClose, onCreate }: Props) {
   const [symbol, setSymbol] = useState(trade?.symbol ?? initialSymbol)
-  const [side, setSide] = useState<Side>(trade?.side ?? 'long')
+  const side = 'long' as const
   const [entry, setEntry] = useState(String(trade?.entryPrice ?? currentPrice))
   const [amount, setAmount] = useState(String(trade?.amount ?? '0.1'))
   const entryNum = Number(entry) || 0
@@ -31,11 +31,8 @@ export function TradeModal({ currentPrice, initialSymbol, trade, onClose, onCrea
 
   return <div className="modal-backdrop" onMouseDown={e => e.target === e.currentTarget && onClose()}>
     <form className="modal" onSubmit={submit}>
-      <header><div><span className="eyebrow">{trade ? 'Редактирование' : 'Новая позиция'}</span><h2>{trade ? 'Изменить сделку' : 'Записать сделку'}</h2></div><button type="button" className="icon-btn" onClick={onClose}><X size={18}/></button></header>
-      <div className="side-switch">
-        <button type="button" className={side === 'long' ? 'active long' : ''} onClick={() => setSide('long')}><ArrowUpRight size={18}/> Long</button>
-        <button type="button" className={side === 'short' ? 'active short' : ''} onClick={() => setSide('short')}><ArrowDownRight size={18}/> Short</button>
-      </div>
+      <header><div><span className="eyebrow">{trade ? 'Редактирование покупки' : 'Спотовая операция'}</span><h2>{trade ? 'Изменить покупку' : 'Купить актив'}</h2></div><button type="button" className="icon-btn" onClick={onClose}><X size={18}/></button></header>
+      <div className="spot-operation"><ShoppingCart/><div><strong>Покупка актива</strong><small>Позиция закроется после продажи актива</small></div></div>
       <div className="form-grid">
         <label>Актив<select value={symbol} onChange={e => setSymbol(e.target.value)}>{symbols.map(s => <option key={s}>{s}</option>)}</select></label>
         <label>Дата и время<input type="datetime-local" required value={date} onChange={e => setDate(e.target.value)}/></label>
@@ -45,7 +42,7 @@ export function TradeModal({ currentPrice, initialSymbol, trade, onClose, onCrea
         <label>Stop Loss, %<div className="percent-input"><input type="number" min="0" step="0.1" value={slPercent} placeholder="Например, 2" onChange={e => setSlPercent(e.target.value)}/><span>%</span></div><small>{slPercent ? `Цена: ${(entryNum * (1 + (side==='long'?-1:1)*Number(slPercent)/100)).toFixed(2)}` : 'Процент от цены входа'}</small></label>
       </div>
       <label>Комментарий<textarea value={note} placeholder="Почему вы открываете позицию?" onChange={e => setNote(e.target.value)}/></label>
-      <div className="modal-actions"><button type="button" className="btn ghost" onClick={onClose}>Отмена</button><button className="btn primary">{trade ? 'Сохранить изменения' : 'Создать позицию'}</button></div>
+      <div className="modal-actions"><button type="button" className="btn ghost" onClick={onClose}>Отмена</button><button className="btn primary">{trade ? 'Сохранить изменения' : 'Записать покупку'}</button></div>
     </form>
   </div>
 }
@@ -54,11 +51,11 @@ export function CloseTradeModal({ trade, currentPrice, onClose, onSubmit }: { tr
   const [price, setPrice] = useState(String(currentPrice))
   return <div className="modal-backdrop" onMouseDown={e => e.target === e.currentTarget && onClose()}>
     <form className="modal compact" onSubmit={e => { e.preventDefault(); onSubmit(Number(price)) }}>
-      <header><div><span className="eyebrow">{trade.id} · {trade.symbol}</span><h2>Закрыть позицию</h2></div><button type="button" className="icon-btn" onClick={onClose}><X size={18}/></button></header>
-      <p className="modal-hint">Укажите фактическую цену выхода или используйте актуальную рыночную цену.</p>
-      <label>Цена выхода<input type="number" min="0" step="any" required value={price} onChange={e => setPrice(e.target.value)}/></label>
+      <header><div><span className="eyebrow">{trade.id} · {trade.symbol}</span><h2>Продать актив</h2></div><button type="button" className="icon-btn" onClick={onClose}><X size={18}/></button></header>
+      <p className="modal-hint">Укажите фактическую цену продажи или используйте актуальную рыночную цену.</p>
+      <label>Цена продажи<input type="number" min="0" step="any" required value={price} onChange={e => setPrice(e.target.value)}/></label>
       <button type="button" className="market-price" onClick={() => setPrice(String(currentPrice))}><i/> По рынку сейчас <strong>${currentPrice.toLocaleString('en-US')}</strong></button>
-      <div className="modal-actions"><button type="button" className="btn ghost" onClick={onClose}>Отмена</button><button className="btn primary">Закрыть и рассчитать</button></div>
+      <div className="modal-actions"><button type="button" className="btn ghost" onClick={onClose}>Отмена</button><button className="btn primary">Продать и рассчитать</button></div>
     </form>
   </div>
 }
