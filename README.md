@@ -93,13 +93,13 @@ npm run dev
 
 ## Команды
 
-| Команда | Назначение |
-| --- | --- |
-| `npm run dev` | Запуск локального режима разработки |
-| `npm run build` | Проверка TypeScript и production-сборка |
-| `npm run lint` | Проверка качества кода |
-| `npm run preview` | Просмотр готовой production-сборки |
-| `npm run deploy` | Ручная публикация каталога `dist` в GitHub Pages |
+| Команда           | Назначение                                       |
+| ----------------- | ------------------------------------------------ |
+| `npm run dev`     | Запуск локального режима разработки              |
+| `npm run build`   | Проверка TypeScript и production-сборка          |
+| `npm run lint`    | Проверка качества кода                           |
+| `npm run preview` | Просмотр готовой production-сборки               |
+| `npm run deploy`  | Ручная публикация каталога `dist` в GitHub Pages |
 
 ## Структура проекта
 
