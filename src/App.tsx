@@ -5,8 +5,8 @@ import { Intro } from './components/Intro'
 import { MarketChart } from './components/MarketChart'
 import { CloseTradeModal, TradeModal } from './components/TradeModal'
 import { symbols } from './data'
-import { useCandles, useMarketPrice, useTrades } from './hooks'
-import { money, num, shortDate, tradePnl, tradePnlPercent } from './lib'
+import { useCandles, useFxRate, useMarketPrice, useTrades } from './hooks'
+import { currencyMoney, money, num, shortDate, tradePnl, tradePnlPercent } from './lib'
 import type { Candle, Page, Period, Timeframe, Trade } from './types'
 
 const assetColors: Record<string, string> = { BTCUSDT: '#f7931a', ETHUSDT: '#7387e8', SOLUSDT: '#9a63ff', BNBUSDT: '#f3ba2f', XRPUSDT: '#3d9be9' }
@@ -28,6 +28,7 @@ export default function App() {
   const [profile, setProfile] = useState(() => JSON.parse(localStorage.getItem('profitflow.profile') || '{"name":"Trader","email":"local@profitflow.app","currency":"USD","risk":"2"}'))
   const { price, live } = useMarketPrice(symbol)
   const { candles, remainingMs } = useCandles(symbol,timeframe)
+  const fxRate = useFxRate(profile.currency)
 
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 2600) }
   const finishIntro = () => { sessionStorage.setItem('profitflow.introSeen', '1'); setIntro(false) }
@@ -107,7 +108,7 @@ export default function App() {
               const livePrice = trade.symbol === symbol ? price : trade.entryPrice * 1.008
               const result = tradePnl(trade, livePrice)
               return <div className="position" key={trade.id} onClick={() => setSymbol(trade.symbol)}>
-                <div className="position-main"><span className="coin small" style={{ background: assetColors[trade.symbol] }}>{trade.symbol[0]}</span><div><strong>{trade.symbol.replace('USDT','')}</strong><small>Куплено · {trade.amount}</small></div><span className={result >= 0 ? 'positive' : 'negative'}>{result >= 0 ? '+' : ''}{money(result,2)}<small>{tradePnlPercent(trade,livePrice).toFixed(2)}%</small></span></div>
+                <div className="position-main"><span className="coin small" style={{ background: assetColors[trade.symbol] }}>{trade.symbol[0]}</span><div><strong>{trade.symbol.replace('USDT','')}</strong><small>Куплено на {currencyMoney(trade.amount*trade.entryPrice*fxRate,profile.currency,2)}</small></div><span className={result >= 0 ? 'positive' : 'negative'}>{result >= 0 ? '+' : ''}{currencyMoney(result*fxRate,profile.currency,2)}<small>{tradePnlPercent(trade,livePrice).toFixed(2)}%</small></span></div>
                 <div className="position-levels"><span>Вход <b>${num(trade.entryPrice)}</b></span><span>Сейчас <b>${num(livePrice)}</b></span></div>
                 <div className="position-actions"><button onClick={e => { e.stopPropagation(); setEditingTrade(trade) }}><Pencil/> Изменить</button><button onClick={e => { e.stopPropagation(); setClosingTrade(trade) }}>Продать</button></div>
               </div>
@@ -136,7 +137,7 @@ export default function App() {
           <div className="trade-table"><div className="trade-row trade-head"><span>Актив / ID</span><span>Операция</span><span>Покупка</span><span>Продажа / Сейчас</span><span>Результат</span><span>Дата</span><span/></div>{visibleTrades.map(trade => {
             const exit = trade.exitPrice ?? (trade.symbol===symbol ? price : trade.entryPrice*1.008); const result = tradePnl(trade,exit)
             const targetPct=trade.takeProfit?Math.abs((trade.takeProfit-trade.entryPrice)/trade.entryPrice*100):0; const riskPct=trade.stopLoss?Math.abs((trade.stopLoss-trade.entryPrice)/trade.entryPrice*100):0; const probability=Math.max(12,Math.min(88,Math.round(68-targetPct*2.1+riskPct*.8)))
-            return <div className={expandedTrade===trade.id?'trade-entry expanded':'trade-entry'} key={trade.id}><div className="trade-row" onClick={()=>setExpandedTrade(expandedTrade===trade.id?null:trade.id)}><span className="asset-cell"><i className="coin tiny" style={{background:assetColors[trade.symbol]}}>{trade.symbol[0]}</i><b>{trade.symbol.replace('USDT','')}</b><small>{trade.id}</small></span><span><i className="side-tag buy"><ArrowDownRight/>Покупка</i></span><span><b>${num(trade.entryPrice)}</b><small>{trade.amount} ед.</small></span><span><b>${num(exit)}</b><small className={trade.status==='open'?'positive':''}>{trade.status==='open'?'хранится':'продано'}</small></span><span className={result>=0?'positive':'negative'}><b>{result>=0?'+':''}{money(result,2)}</b><small>{tradePnlPercent(trade,exit).toFixed(2)}%</small></span><span><b>{shortDate(trade.openedAt)}</b><small>{trade.note||'Нажмите для деталей'}</small></span><span className="row-actions" onClick={e=>e.stopPropagation()}>{trade.status==='open'&&<><button title="Изменить" onClick={()=>setEditingTrade(trade)}><Pencil/></button><button title="Продать" onClick={()=>setClosingTrade(trade)}><Target/></button></>}<button title="Удалить" onClick={()=>removeTrade(trade.id)}><Trash2/></button></span></div>{expandedTrade===trade.id&&<div className="trade-details"><div><span>Ожидаемая прибыль</span><strong className="positive">{targetPct?`+${targetPct.toFixed(2)}%`:'TP не задан'}</strong><small>{trade.takeProfit?money(Math.abs(trade.takeProfit-trade.entryPrice)*trade.amount,2):'Укажите Take Profit'}</small></div><div><span>Допустимый риск</span><strong className="negative">{riskPct?`−${riskPct.toFixed(2)}%`:'SL не задан'}</strong><small>{trade.stopLoss?money(Math.abs(trade.stopLoss-trade.entryPrice)*trade.amount,2):'Укажите Stop Loss'}</small></div><div><span>Расчётная вероятность цели</span><strong>{targetPct?`${probability}%`:'—'}</strong><small>Эвристическая оценка, не прогноз</small></div><div><span>Risk / Reward</span><strong>{riskPct?(targetPct/riskPct).toFixed(2):'—'}</strong><small>отношение прибыли к риску</small></div></div>}</div>
+            return <div className={expandedTrade===trade.id?'trade-entry expanded':'trade-entry'} key={trade.id}><div className="trade-row" onClick={()=>setExpandedTrade(expandedTrade===trade.id?null:trade.id)}><span className="asset-cell"><i className="coin tiny" style={{background:assetColors[trade.symbol]}}>{trade.symbol[0]}</i><b>{trade.symbol.replace('USDT','')}</b><small>{trade.id}</small></span><span><i className="side-tag buy"><ArrowDownRight/>Покупка</i></span><span><b>{currencyMoney(trade.entryPrice*trade.amount*fxRate,profile.currency,2)}</b><small>по ${num(trade.entryPrice)}</small></span><span><b>${num(exit)}</b><small className={trade.status==='open'?'positive':''}>{trade.status==='open'?'хранится':'продано'}</small></span><span className={result>=0?'positive':'negative'}><b>{result>=0?'+':''}{currencyMoney(result*fxRate,profile.currency,2)}</b><small>{tradePnlPercent(trade,exit).toFixed(2)}%</small></span><span><b>{shortDate(trade.openedAt)}</b><small>{trade.note||'Нажмите для деталей'}</small></span><span className="row-actions" onClick={e=>e.stopPropagation()}>{trade.status==='open'&&<><button title="Изменить" onClick={()=>setEditingTrade(trade)}><Pencil/></button><button title="Продать" onClick={()=>setClosingTrade(trade)}><Target/></button></>}<button title="Удалить" onClick={()=>removeTrade(trade.id)}><Trash2/></button></span></div>{expandedTrade===trade.id&&<div className="trade-details"><div><span>Ожидаемая прибыль</span><strong className="positive">{targetPct?`+${targetPct.toFixed(2)}%`:'TP не задан'}</strong><small>{trade.takeProfit?currencyMoney(Math.abs(trade.takeProfit-trade.entryPrice)*trade.amount*fxRate,profile.currency,2):'Укажите Take Profit'}</small></div><div><span>Допустимый риск</span><strong className="negative">{riskPct?`−${riskPct.toFixed(2)}%`:'SL не задан'}</strong><small>{trade.stopLoss?currencyMoney(Math.abs(trade.stopLoss-trade.entryPrice)*trade.amount*fxRate,profile.currency,2):'Укажите Stop Loss'}</small></div><div><span>Расчётная вероятность цели</span><strong>{targetPct?`${probability}%`:'—'}</strong><small>Эвристическая оценка, не прогноз</small></div><div><span>Risk / Reward</span><strong>{riskPct?(targetPct/riskPct).toFixed(2):'—'}</strong><small>отношение прибыли к риску</small></div></div>}</div>
           })}</div>
         </section>
         </>}
@@ -145,8 +146,8 @@ export default function App() {
         <footer><span>ProfitFlow © {new Date().getFullYear()}</span><p>Данные хранятся локально на этом устройстве. Не является финансовой рекомендацией.</p><span className="secure"><i/> Local-first</span></footer>
       </div>
     </main>
-    {createOpen && <TradeModal currentPrice={price} initialSymbol={symbol} onClose={()=>setCreateOpen(false)} onCreate={addTrade}/>} 
-    {editingTrade && <TradeModal currentPrice={price} initialSymbol={editingTrade.symbol} trade={editingTrade} onClose={()=>setEditingTrade(null)} onCreate={saveTrade}/>} 
+    {createOpen && <TradeModal currentPrice={price} initialSymbol={symbol} currency={profile.currency} fxRate={fxRate} onClose={()=>setCreateOpen(false)} onCreate={addTrade}/>} 
+    {editingTrade && <TradeModal currentPrice={price} initialSymbol={editingTrade.symbol} currency={profile.currency} fxRate={fxRate} trade={editingTrade} onClose={()=>setEditingTrade(null)} onCreate={saveTrade}/>} 
     {closingTrade && <CloseTradeModal trade={closingTrade} currentPrice={closingTrade.symbol===symbol?price:closingTrade.entryPrice*1.008} onClose={()=>setClosingTrade(null)} onSubmit={closeTrade}/>} 
     {toast && <div className="toast"><span>✓</span>{toast}</div>}
   </div>

@@ -4,6 +4,10 @@ export const money = (value: number, digits = 0) => new Intl.NumberFormat('ru-RU
   style: 'currency', currency: 'USD', maximumFractionDigits: digits,
 }).format(value)
 
+export const currencyMoney = (value: number, currency = 'USD', digits = 0) => new Intl.NumberFormat('ru-RU', {
+  style: 'currency', currency, maximumFractionDigits: digits,
+}).format(value)
+
 export const num = (value: number) => new Intl.NumberFormat('ru-RU', {
   maximumFractionDigits: value < 10 ? 4 : 2,
 }).format(value)

@@ -43,6 +43,18 @@ export function useCandles(symbol: string, timeframe: Timeframe) {
   return { candles, remainingMs: Math.max(0, (candles.at(-1)?.closeTime ?? now) - now) }
 }
 
+export function useFxRate(currency: string) {
+  const fallback:Record<string,number> = { USD:1, EUR:.86, RUB:79.5 }
+  const [rate,setRate] = useState(fallback[currency] ?? 1)
+  useEffect(()=>{
+    if(currency==='USD'){setRate(1);return}
+    let active=true
+    fetch('https://open.er-api.com/v6/latest/USD').then(r=>r.json()).then(data=>{if(active&&data?.rates?.[currency])setRate(Number(data.rates[currency]))}).catch(()=>setRate(fallback[currency]??1))
+    return()=>{active=false}
+  },[currency])
+  return rate
+}
+
 export function useMarketPrice(symbol: string) {
   const fallback: Record<string, number> = { BTCUSDT: 67438.2, ETHUSDT: 3528.4, SOLUSDT: 153.82, BNBUSDT: 594.3, XRPUSDT: .598 }
   const [price, setPrice] = useState(fallback[symbol] ?? 100)

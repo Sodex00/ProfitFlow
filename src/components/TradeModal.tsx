@@ -3,13 +3,13 @@ import { ShoppingCart, X } from 'lucide-react'
 import { symbols } from '../data'
 import type { Trade } from '../types'
 
-type Props = { currentPrice: number; initialSymbol: string; trade?: Trade | null; onClose: () => void; onCreate: (trade: Trade) => void }
+type Props = { currentPrice: number; initialSymbol: string; currency: string; fxRate: number; trade?: Trade | null; onClose: () => void; onCreate: (trade: Trade) => void }
 
-export function TradeModal({ currentPrice, initialSymbol, trade, onClose, onCreate }: Props) {
+export function TradeModal({ currentPrice, initialSymbol, currency, fxRate, trade, onClose, onCreate }: Props) {
   const [symbol, setSymbol] = useState(trade?.symbol ?? initialSymbol)
   const side = 'long' as const
   const [entry, setEntry] = useState(String(trade?.entryPrice ?? currentPrice))
-  const [amount, setAmount] = useState(String(trade?.amount ?? '0.1'))
+  const [budget, setBudget] = useState(String(trade ? Math.round(trade.amount * trade.entryPrice * fxRate * 100) / 100 : currency === 'RUB' ? 10000 : 250))
   const entryNum = Number(entry) || 0
   const priceToPercent = (value?: number) => value && entryNum ? Math.abs((value-entryNum)/entryNum*100).toFixed(2) : ''
   const [tpPercent, setTpPercent] = useState(priceToPercent(trade?.takeProfit))
@@ -22,7 +22,7 @@ export function TradeModal({ currentPrice, initialSymbol, trade, onClose, onCrea
     event.preventDefault()
     onCreate({
       id: trade?.id ?? `PF-${String(Date.now()).slice(-4)}`, symbol, side,
-      entryPrice: Number(entry), amount: Number(amount),
+      entryPrice: Number(entry), amount: Number(budget) / fxRate / Number(entry),
       takeProfit: tpPercent ? entryNum * (1 + (side === 'long' ? 1 : -1) * Number(tpPercent)/100) : undefined,
       stopLoss: slPercent ? entryNum * (1 + (side === 'long' ? -1 : 1) * Number(slPercent)/100) : undefined,
       openedAt: new Date(date).toISOString(), status: trade?.status ?? 'open', note,
@@ -37,7 +37,7 @@ export function TradeModal({ currentPrice, initialSymbol, trade, onClose, onCrea
         <label>Актив<select value={symbol} onChange={e => setSymbol(e.target.value)}>{symbols.map(s => <option key={s}>{s}</option>)}</select></label>
         <label>Дата и время<input type="datetime-local" required value={date} onChange={e => setDate(e.target.value)}/></label>
         <label>Цена входа<input type="number" min="0" step="any" required value={entry} onChange={e => setEntry(e.target.value)}/></label>
-        <label>Количество<input type="number" min="0" step="any" required value={amount} onChange={e => setAmount(e.target.value)}/></label>
+        <label>Сумма покупки, {currency}<input type="number" min="0" step="any" required value={budget} onChange={e => setBudget(e.target.value)}/><small>Будет куплено ≈ {(Number(budget)/fxRate/Math.max(1,Number(entry))).toFixed(8)} {symbol.replace('USDT','')}</small></label>
         <label>Take Profit, %<div className="percent-input"><input type="number" min="0" step="0.1" value={tpPercent} placeholder="Например, 5" onChange={e => setTpPercent(e.target.value)}/><span>%</span></div><small>{tpPercent ? `Цена: ${(entryNum * (1 + (side==='long'?1:-1)*Number(tpPercent)/100)).toFixed(2)}` : 'Процент от цены входа'}</small></label>
         <label>Stop Loss, %<div className="percent-input"><input type="number" min="0" step="0.1" value={slPercent} placeholder="Например, 2" onChange={e => setSlPercent(e.target.value)}/><span>%</span></div><small>{slPercent ? `Цена: ${(entryNum * (1 + (side==='long'?-1:1)*Number(slPercent)/100)).toFixed(2)}` : 'Процент от цены входа'}</small></label>
       </div>
