@@ -3,6 +3,7 @@ import { demoTrades } from './data'
 import type { Candle, Timeframe, Trade } from './types'
 
 const KEY = 'profitflow.trades.v1'
+const FX_FALLBACK:Record<string,number> = { USD:1, EUR:.86, RUB:79.5 }
 
 export function useTrades() {
   const [trades, setTrades] = useState<Trade[]>(() => {
@@ -44,12 +45,11 @@ export function useCandles(symbol: string, timeframe: Timeframe) {
 }
 
 export function useFxRate(currency: string) {
-  const fallback:Record<string,number> = { USD:1, EUR:.86, RUB:79.5 }
-  const [rate,setRate] = useState(fallback[currency] ?? 1)
+  const [rate,setRate] = useState(FX_FALLBACK[currency] ?? 1)
   useEffect(()=>{
     if(currency==='USD'){setRate(1);return}
     let active=true
-    fetch('https://open.er-api.com/v6/latest/USD').then(r=>r.json()).then(data=>{if(active&&data?.rates?.[currency])setRate(Number(data.rates[currency]))}).catch(()=>setRate(fallback[currency]??1))
+    fetch('https://open.er-api.com/v6/latest/USD').then(r=>r.json()).then(data=>{if(active&&data?.rates?.[currency])setRate(Number(data.rates[currency]))}).catch(()=>setRate(FX_FALLBACK[currency]??1))
     return()=>{active=false}
   },[currency])
   return rate
