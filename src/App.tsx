@@ -5,9 +5,9 @@ import { Intro } from './components/Intro'
 import { MarketChart } from './components/MarketChart'
 import { CloseTradeModal, TradeModal } from './components/TradeModal'
 import { symbols } from './data'
-import { useMarketPrice, useTrades } from './hooks'
+import { useCandles, useMarketPrice, useTrades } from './hooks'
 import { money, num, shortDate, tradePnl, tradePnlPercent } from './lib'
-import type { Page, Period, Timeframe, Trade } from './types'
+import type { Candle, Page, Period, Timeframe, Trade } from './types'
 
 const assetColors: Record<string, string> = { BTCUSDT: '#f7931a', ETHUSDT: '#7387e8', SOLUSDT: '#9a63ff', BNBUSDT: '#f3ba2f', XRPUSDT: '#3d9be9' }
 
@@ -23,24 +23,31 @@ export default function App() {
   const [editingTrade, setEditingTrade] = useState<Trade | null>(null)
   const [closingTrade, setClosingTrade] = useState<Trade | null>(null)
   const [filter, setFilter] = useState<'all'|'open'|'closed'>('all')
+  const [positionSide,setPositionSide] = useState<'all'|'long'|'short'>('all')
+  const [expandedTrade,setExpandedTrade] = useState<string|null>(null)
   const [toast, setToast] = useState('')
   const [profile, setProfile] = useState(() => JSON.parse(localStorage.getItem('profitflow.profile') || '{"name":"Trader","email":"local@profitflow.app","currency":"USD","risk":"2"}'))
   const { price, live } = useMarketPrice(symbol)
+  const { candles, remainingMs } = useCandles(symbol,timeframe)
 
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 2600) }
   const finishIntro = () => { sessionStorage.setItem('profitflow.introSeen', '1'); setIntro(false) }
-  const closed = trades.filter(t => t.status === 'closed')
-  const open = trades.filter(t => t.status === 'open')
+  const spotTrades = trades.filter(t => t.market !== 'futures')
+  const futuresTrades = trades.filter(t => t.market === 'futures')
+  const closed = spotTrades.filter(t => t.status === 'closed')
+  const open = spotTrades.filter(t => t.status === 'open')
   const pnl = closed.reduce((sum, t) => sum + tradePnl(t), 0)
   const wins = closed.filter(t => tradePnl(t) >= 0).length
   const losses = closed.length - wins
   const volume = trades.reduce((sum, t) => sum + t.entryPrice * t.amount, 0)
-  const visibleTrades = trades.filter(t => filter === 'all' || t.status === filter).slice().reverse()
+  const visibleTrades = spotTrades.filter(t => filter === 'all' || t.status === filter).slice().reverse()
   const selectedOpen = open.filter(t => t.symbol === symbol)
   const dayChange = 2.84
   const chartTrades = useMemo(() => trades.filter(t => t.symbol === symbol), [trades, symbol])
+  const candleCountdown = `${String(Math.floor(remainingMs/60000)).padStart(2,'0')}:${String(Math.floor(remainingMs/1000)%60).padStart(2,'0')}`
 
   const addTrade = (trade: Trade) => { setTrades(prev => [...prev, trade]); setSymbol(trade.symbol); setCreateOpen(false); notify('Позиция добавлена в журнал') }
+  const addFuturesTrade = (trade:Trade) => { setTrades(prev=>[...prev,trade]); notify('Фьючерсная позиция добавлена в журнал') }
   const saveTrade = (trade: Trade) => { setTrades(prev => prev.map(t => t.id === trade.id ? trade : t)); setEditingTrade(null); notify('Изменения сохранены') }
   const navigate = (next: Page) => { setPage(next); setMobileNav(false); window.scrollTo({ top: 0, behavior: 'smooth' }) }
   const closeTrade = (exitPrice: number) => {
@@ -90,14 +97,14 @@ export default function App() {
         <section className="grid-main" id="market">
           <article className="panel chart-panel">
             <header className="panel-head"><div className="asset-select"><span className="coin" style={{ background: assetColors[symbol] }}>{symbol.slice(0,1)}</span><select value={symbol} onChange={e => setSymbol(e.target.value)}>{symbols.map(s => <option key={s}>{s.replace('USDT',' / USDT')}</option>)}</select></div><div className="time-tabs">{(['1m','5m','15m','1h','4h','1d'] as Timeframe[]).map(t=><button key={t} className={timeframe===t?'active':''} onClick={()=>setTimeframe(t)}>{t}</button>)}</div></header>
-            <div className="price-row"><strong>${num(price)}</strong><span className="positive"><ArrowUpRight/> {dayChange}%</span><small>Сегодня</small></div>
-            <MarketChart price={price} trades={chartTrades} timeframe={timeframe}/>
+            <div className="price-row"><strong>${num(price)}</strong><span className="positive"><ArrowUpRight/> {dayChange}%</span><small>Закрытие свечи через <b className="candle-timer">{candleCountdown}</b></small></div>
+            <MarketChart price={price} trades={chartTrades} timeframe={timeframe} candles={candles}/>
             <div className="chart-legend"><span><i className="dot entry"/> Линия входа</span><span><i className="dot tp"/> Take Profit</span><span><i className="dot sl"/> Stop Loss</span><small>{selectedOpen.length} активных отметок</small></div>
           </article>
 
           <article className="panel positions-panel">
-            <header className="panel-head"><div><span className="eyebrow">В рынке</span><h2>Активные позиции</h2></div><span className="count">{open.length}</span></header>
-            <div className="positions-list">{open.length ? open.map(trade => {
+            <header className="panel-head"><div><span className="eyebrow">В рынке</span><h2>Активные позиции</h2></div><span className="count">{open.length}</span></header><div className="position-side-tabs"><button className={positionSide==='all'?'active':''} onClick={()=>setPositionSide('all')}>Все</button><button className={positionSide==='long'?'active long':''} onClick={()=>setPositionSide('long')}>Long {open.filter(t=>t.side==='long').length}</button><button className={positionSide==='short'?'active short':''} onClick={()=>setPositionSide('short')}>Short {open.filter(t=>t.side==='short').length}</button></div>
+            <div className="positions-list">{open.length ? open.filter(t=>positionSide==='all'||t.side===positionSide).map(trade => {
               const livePrice = trade.symbol === symbol ? price : trade.entryPrice * 1.008
               const result = tradePnl(trade, livePrice)
               return <div className="position" key={trade.id} onClick={() => setSymbol(trade.symbol)}>
@@ -129,11 +136,12 @@ export default function App() {
           <header className="panel-head"><div><span className="eyebrow">История решений</span><h2>Журнал сделок</h2></div><div className="journal-actions"><div className="filter-tabs">{(['all','open','closed'] as const).map((f,i)=><button key={f} className={filter===f?'active':''} onClick={()=>setFilter(f)}>{['Все','Открытые','Закрытые'][i]}</button>)}</div><button className="btn outline" onClick={()=>setCreateOpen(true)}><Plus/> Записать</button></div></header>
           <div className="trade-table"><div className="trade-row trade-head"><span>Актив / ID</span><span>Направление</span><span>Вход</span><span>Выход / Сейчас</span><span>Результат</span><span>Дата</span><span/></div>{visibleTrades.map(trade => {
             const exit = trade.exitPrice ?? (trade.symbol===symbol ? price : trade.entryPrice*1.008); const result = tradePnl(trade,exit)
-            return <div className="trade-row" key={trade.id}><span className="asset-cell"><i className="coin tiny" style={{background:assetColors[trade.symbol]}}>{trade.symbol[0]}</i><b>{trade.symbol.replace('USDT','')}</b><small>{trade.id}</small></span><span><i className={`side-tag ${trade.side}`}>{trade.side==='long'?<ArrowUpRight/>:<ArrowDownRight/>}{trade.side}</i></span><span><b>${num(trade.entryPrice)}</b><small>{trade.amount} ед.</small></span><span><b>${num(exit)}</b><small className={trade.status==='open'?'positive':''}>{trade.status==='open'?'live':'закрыта'}</small></span><span className={result>=0?'positive':'negative'}><b>{result>=0?'+':''}{money(result,2)}</b><small>{tradePnlPercent(trade,exit).toFixed(2)}%</small></span><span><b>{shortDate(trade.openedAt)}</b><small>{trade.note||'Без заметки'}</small></span><span className="row-actions">{trade.status==='open'&&<><button title="Изменить" onClick={()=>setEditingTrade(trade)}><Pencil/></button><button title="Закрыть" onClick={()=>setClosingTrade(trade)}><Target/></button></>}<button title="Удалить" onClick={()=>removeTrade(trade.id)}><Trash2/></button></span></div>
+            const targetPct=trade.takeProfit?Math.abs((trade.takeProfit-trade.entryPrice)/trade.entryPrice*100):0; const riskPct=trade.stopLoss?Math.abs((trade.stopLoss-trade.entryPrice)/trade.entryPrice*100):0; const probability=Math.max(12,Math.min(88,Math.round(68-targetPct*2.1+riskPct*.8)))
+            return <div className={expandedTrade===trade.id?'trade-entry expanded':'trade-entry'} key={trade.id}><div className="trade-row" onClick={()=>setExpandedTrade(expandedTrade===trade.id?null:trade.id)}><span className="asset-cell"><i className="coin tiny" style={{background:assetColors[trade.symbol]}}>{trade.symbol[0]}</i><b>{trade.symbol.replace('USDT','')}</b><small>{trade.id}</small></span><span><i className={`side-tag ${trade.side}`}>{trade.side==='long'?<ArrowUpRight/>:<ArrowDownRight/>}{trade.side}</i></span><span><b>${num(trade.entryPrice)}</b><small>{trade.amount} ед.</small></span><span><b>${num(exit)}</b><small className={trade.status==='open'?'positive':''}>{trade.status==='open'?'live':'закрыта'}</small></span><span className={result>=0?'positive':'negative'}><b>{result>=0?'+':''}{money(result,2)}</b><small>{tradePnlPercent(trade,exit).toFixed(2)}%</small></span><span><b>{shortDate(trade.openedAt)}</b><small>{trade.note||'Нажмите для деталей'}</small></span><span className="row-actions" onClick={e=>e.stopPropagation()}>{trade.status==='open'&&<><button title="Изменить" onClick={()=>setEditingTrade(trade)}><Pencil/></button><button title="Закрыть" onClick={()=>setClosingTrade(trade)}><Target/></button></>}<button title="Удалить" onClick={()=>removeTrade(trade.id)}><Trash2/></button></span></div>{expandedTrade===trade.id&&<div className="trade-details"><div><span>Ожидаемая прибыль</span><strong className="positive">{targetPct?`+${targetPct.toFixed(2)}%`:'TP не задан'}</strong><small>{trade.takeProfit?money(Math.abs(trade.takeProfit-trade.entryPrice)*trade.amount,2):'Укажите Take Profit'}</small></div><div><span>Допустимый риск</span><strong className="negative">{riskPct?`−${riskPct.toFixed(2)}%`:'SL не задан'}</strong><small>{trade.stopLoss?money(Math.abs(trade.stopLoss-trade.entryPrice)*trade.amount,2):'Укажите Stop Loss'}</small></div><div><span>Расчётная вероятность цели</span><strong>{targetPct?`${probability}%`:'—'}</strong><small>Эвристическая оценка, не прогноз</small></div><div><span>Risk / Reward</span><strong>{riskPct?(targetPct/riskPct).toFixed(2):'—'}</strong><small>отношение прибыли к риску</small></div></div>}</div>
           })}</div>
         </section>
         </>}
-        {page==='futures'&&<FuturesPage symbol={symbol} setSymbol={setSymbol} price={price} timeframe={timeframe} setTimeframe={setTimeframe} trades={chartTrades}/>} 
+        {page==='futures'&&<FuturesPage symbol={symbol} setSymbol={setSymbol} price={price} timeframe={timeframe} setTimeframe={setTimeframe} trades={futuresTrades} candles={candles} countdown={candleCountdown} onCreate={addFuturesTrade} onDelete={removeTrade}/>} 
         {page==='settings'&&<SettingsPage profile={profile} onSave={(next)=>{setProfile(next);localStorage.setItem('profitflow.profile',JSON.stringify(next));notify('Профиль и настройки сохранены')}}/>}
         <footer><span>ProfitFlow © {new Date().getFullYear()}</span><p>Данные хранятся локально на этом устройстве. Не является финансовой рекомендацией.</p><span className="secure"><i/> Local-first</span></footer>
       </div>
@@ -145,10 +153,11 @@ export default function App() {
   </div>
 }
 
-function FuturesPage({ symbol, setSymbol, price, timeframe, setTimeframe, trades }: { symbol:string; setSymbol:(s:string)=>void; price:number; timeframe:Timeframe; setTimeframe:(t:Timeframe)=>void; trades:Trade[] }) {
+function FuturesPage({ symbol, setSymbol, price, timeframe, setTimeframe, trades, candles, countdown, onCreate, onDelete }: { symbol:string; setSymbol:(s:string)=>void; price:number; timeframe:Timeframe; setTimeframe:(t:Timeframe)=>void; trades:Trade[]; candles:Candle[]; countdown:string; onCreate:(t:Trade)=>void; onDelete:(id:string)=>void }) {
   const [side,setSide]=useState<'long'|'short'>('long'); const [margin,setMargin]=useState('250'); const [leverage,setLeverage]=useState(5)
   const positionSize=Number(margin)*leverage; const liquidation=side==='long'?price*(1-1/leverage*.92):price*(1+1/leverage*.92)
-  return <section className="futures-layout"><article className="panel futures-chart"><header className="panel-head"><div className="asset-select"><span className="coin" style={{background:assetColors[symbol]}}>{symbol[0]}</span><select value={symbol} onChange={e=>setSymbol(e.target.value)}>{symbols.map(s=><option key={s}>{s.replace('USDT',' / USDT')} PERP</option>)}</select></div><div className="time-tabs">{(['1m','5m','15m','1h','4h','1d'] as Timeframe[]).map(t=><button key={t} className={timeframe===t?'active':''} onClick={()=>setTimeframe(t)}>{t}</button>)}</div></header><div className="price-row"><strong>${num(price)}</strong><span className="positive"><ArrowUpRight/> LIVE</span><small>Бессрочный контракт</small></div><MarketChart price={price} trades={trades} timeframe={timeframe}/></article><article className="panel order-ticket"><span className="eyebrow">Симулятор позиции</span><h2>Фьючерсный ордер</h2><div className="side-switch"><button className={side==='long'?'active long':''} onClick={()=>setSide('long')}><ArrowUpRight/> Long</button><button className={side==='short'?'active short':''} onClick={()=>setSide('short')}><ArrowDownRight/> Short</button></div><label>Маржа, USDT<input value={margin} type="number" onChange={e=>setMargin(e.target.value)}/></label><label>Кредитное плечо <b>{leverage}×</b><input type="range" min="1" max="50" value={leverage} onChange={e=>setLeverage(Number(e.target.value))}/><div className="leverage-marks"><span>1×</span><span>10×</span><span>25×</span><span>50×</span></div></label><div className="futures-calc"><span>Размер позиции <b>{money(positionSize)}</b></span><span>Расчётная ликвидация <b className="negative">${num(liquidation)}</b></span><span>Комиссия открытия <b>${(positionSize*.0005).toFixed(2)}</b></span></div><button className={`btn futures-submit ${side}`} onClick={()=>alert('Фьючерсный модуль работает как симулятор риска. Реальные ордера на биржу не отправляются.')}>{side==='long'?'Открыть Long':'Открыть Short'}</button><p className="risk-note"><ShieldCheck/> Риск рассчитывается локально. Реальный ордер не создаётся.</p></article></section>
+  const submit=()=>onCreate({id:`FUT-${String(Date.now()).slice(-4)}`,symbol,side,entryPrice:price,amount:positionSize/price,openedAt:new Date().toISOString(),status:'open',market:'futures',leverage,note:`Маржа ${money(Number(margin))}`})
+  return <><section className="futures-layout"><article className="panel futures-chart"><header className="panel-head"><div className="asset-select"><span className="coin" style={{background:assetColors[symbol]}}>{symbol[0]}</span><select value={symbol} onChange={e=>setSymbol(e.target.value)}>{symbols.map(s=><option key={s}>{s.replace('USDT',' / USDT')} PERP</option>)}</select></div><div className="time-tabs">{(['1m','5m','15m','1h','4h','1d'] as Timeframe[]).map(t=><button key={t} className={timeframe===t?'active':''} onClick={()=>setTimeframe(t)}>{t}</button>)}</div></header><div className="price-row"><strong>${num(price)}</strong><span className="positive"><ArrowUpRight/> LIVE</span><small>Свеча закроется через <b className="candle-timer">{countdown}</b></small></div><MarketChart price={price} trades={trades.filter(t=>t.symbol===symbol)} timeframe={timeframe} candles={candles}/></article><article className="panel order-ticket"><span className="eyebrow">Симулятор позиции</span><h2>Фьючерсный ордер</h2><div className="side-switch"><button className={side==='long'?'active long':''} onClick={()=>setSide('long')}><ArrowUpRight/> Long</button><button className={side==='short'?'active short':''} onClick={()=>setSide('short')}><ArrowDownRight/> Short</button></div><label>Маржа, USDT<input value={margin} type="number" onChange={e=>setMargin(e.target.value)}/></label><label>Кредитное плечо <b>{leverage}×</b><input type="range" min="1" max="50" value={leverage} onChange={e=>setLeverage(Number(e.target.value))}/><div className="leverage-marks"><span>1×</span><span>10×</span><span>25×</span><span>50×</span></div></label><div className="futures-calc"><span>Размер позиции <b>{money(positionSize)}</b></span><span>Расчётная ликвидация <b className="negative">${num(liquidation)}</b></span><span>Комиссия открытия <b>${(positionSize*.0005).toFixed(2)}</b></span></div><button className={`btn futures-submit ${side}`} onClick={submit}>{side==='long'?'Открыть Long':'Открыть Short'}</button><p className="risk-note"><ShieldCheck/> Сделка сохраняется только в локальный журнал.</p></article></section><section className="panel futures-journal"><header className="panel-head"><div><span className="eyebrow">История деривативов</span><h2>Журнал фьючерсных сделок</h2></div><span className="count">{trades.length}</span></header>{trades.length?<div className="futures-table">{trades.slice().reverse().map(trade=>{const result=tradePnl(trade,trade.status==='open'?price:trade.exitPrice);return <div key={trade.id}><span><i className={`side-tag ${trade.side}`}>{trade.side}</i><b>{trade.symbol.replace('USDT','')} PERP</b><small>{trade.id}</small></span><span>Вход<b>${num(trade.entryPrice)}</b></span><span>Плечо<b>{trade.leverage}×</b></span><span>P&L<b className={result>=0?'positive':'negative'}>{result>=0?'+':''}{money(result,2)}</b></span><span>{shortDate(trade.openedAt)}</span><button onClick={()=>onDelete(trade.id)}><Trash2/></button></div>})}</div>:<div className="empty"><CandlestickChart/><strong>Журнал пока пуст</strong><p>Откройте первую тестовую фьючерсную позицию.</p></div>}</section></>
 }
 
 type Profile = { name:string; email:string; currency:string; risk:string }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { demoTrades } from './data'
-import type { Trade } from './types'
+import type { Candle, Timeframe, Trade } from './types'
 
 const KEY = 'profitflow.trades.v1'
 
@@ -14,6 +14,33 @@ export function useTrades() {
 
   useEffect(() => { localStorage.setItem(KEY, JSON.stringify(trades)) }, [trades])
   return [trades, setTrades] as const
+}
+
+export function useCandles(symbol: string, timeframe: Timeframe) {
+  const [candles, setCandles] = useState<Candle[]>([])
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    let active = true
+    let socket: WebSocket | null = null
+    const load = async () => {
+      try {
+        const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${timeframe}&limit=60`)
+        const rows = await response.json()
+        if (active && Array.isArray(rows)) setCandles(rows.map((row: (number|string)[]) => ({ openTime:Number(row[0]), open:Number(row[1]), high:Number(row[2]), low:Number(row[3]), close:Number(row[4]), closeTime:Number(row[6]) })))
+      } catch { /* keep last visible series */ }
+    }
+    load()
+    socket = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_${timeframe}`)
+    socket.onmessage = event => {
+      const k = JSON.parse(event.data).k
+      const next:Candle = { openTime:k.t, open:Number(k.o), high:Number(k.h), low:Number(k.l), close:Number(k.c), closeTime:k.T }
+      if (!active) return
+      setCandles(previous => previous.at(-1)?.openTime === next.openTime ? [...previous.slice(0,-1),next] : [...previous.slice(-59),next])
+    }
+    const clock = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => { active=false; socket?.close(); window.clearInterval(clock) }
+  }, [symbol,timeframe])
+  return { candles, remainingMs: Math.max(0, (candles.at(-1)?.closeTime ?? now) - now) }
 }
 
 export function useMarketPrice(symbol: string) {

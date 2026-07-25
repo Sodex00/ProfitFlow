@@ -14,8 +14,11 @@ export interface Trade {
   closedAt?: string
   status: TradeStatus
   note?: string
+  market?: 'spot' | 'futures'
+  leverage?: number
 }
 
 export type Period = 'day' | 'week' | 'month' | 'year'
 export type Page = 'spot' | 'futures' | 'analytics' | 'settings'
 export type Timeframe = '1m' | '5m' | '15m' | '1h' | '4h' | '1d'
+export interface Candle { open: number; high: number; low: number; close: number; openTime: number; closeTime: number }
